@@ -30,30 +30,21 @@ The experiments we report in
 
 ### How to run the project (Linux/MacOS)
 - Open a terminal shell;
-- Create a new folder "comparative_analysis" in your filesystem by running command: 
+- Create a new folder named `comparative_analysis` in your filesystem by running command: 
   ```bash
   mkdir comparative_analysis
   ```
-- Download and unzip the datasets and the results for the LP models in our project from.... You can do this by running the following commands:
-  ```bash
-  wget ...
-  unzip...
-  ```
-- Move the resulting folders "datasets" and "results" under "comparative_analysis"
-  ```bash
-  mv ...
-  mv ...
-  ```
+- Download and the `datasets` folder and the `results` folder from [our storage](https://uniroma3-my.sharepoint.com/:f:/g/personal/pmerialdo_os_uniroma3_it/Ehhvyg1JQ7NDvhqCWVUWQT0Bj9N12I7C6-C3WwcaBHIw6g?e=hoRcS4), and move them into the `comparative_analysis` folder.
 
-- Clone this repository under the same "comparative_analysis" folder with command:
+- Clone this repository under the same `comparative_analysis` folder with command:
   ```bash
   git clone https://github.com/merialdo/research.lpca.git
   ```
-
-- Open the project in folder ```comparative_analysis/analysis``` with any Python IDE. 
+  
+- Open the project in folder `comparative_analysis/analysis` (using a Python IDE is suggested). 
   - Access file ```comparative_analysis/analysis/config.json``` and update ```ROOT``` variable with the absolute path of your "comparative_analysis" folder.
-  - In order to replicate the plots and experiments performed in our work, just run the corresponding Python scripts in the ```paper``` mentioned above.
-    By default, these experiments will be run on dataset `FB15K`
+  - In order to replicate the plots and experiments performed in our work, just run the corresponding Python scripts in the `paper` folders mentioned above.
+    By default, these experiments will be run on dataset `FB15K`.
     In order to change the dataset on which to run the experiment, just change the value of variable `dataset_name` in the script you wish to launch.
     Acceptable values are `FB15K`, `FB15K_237`, `WN18`, `WN18RR` and `YAGO3_10`.
 
