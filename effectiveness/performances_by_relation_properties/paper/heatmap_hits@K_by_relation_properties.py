@@ -7,10 +7,11 @@ from io_utils import *
 import numpy as np
 import seaborn as sns
 import matplotlib.pylab as plt
-K = 1
-PROPERTIES_TO_CONSIDER = [REFLEXIVE, IRREFLEXIVE, SYMMETRIC, ANTISYMMETRIC, TRANSITIVE]
 
 dataset_name = FB15K
+
+K = 1
+PROPERTIES_TO_CONSIDER = [REFLEXIVE, IRREFLEXIVE, SYMMETRIC, ANTISYMMETRIC, TRANSITIVE]
 dataset = Dataset(dataset_name)
 
 relation_2_properties = relation_properties.read(dataset_name)
