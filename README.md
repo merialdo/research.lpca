@@ -13,11 +13,10 @@ The project is completely written in Python 3.
 
 ### Structure
 The project is structured as a set of Python scripts, each of which can be run separately from the others:
--  folder `efficiency` contains the scripts to visualize our results on efficiency of LP models.
+- folder `efficiency` contains the scripts to visualize our results on efficiency of LP models.
   - Our findings for training times can be replicated by running script `barchart_training_times.py`
   - Our findings for prediction times can be replicated by running script `barchart_prediction_times.py` 
--  folder `effectiveness` contains the scripts to obtain our results on the effectiveness:
-
+- folder `effectiveness` contains the scripts to obtain our results on the effectiveness:
  - folder `performances_by_peers` contains various scripts that show how the predictive performances of LP models vary, depending on the number of source and target peers of test facts.
  - folder `performances_by_paths` contains various scripts that show how the predictive performances of LP models vary, depending on the Relational Path Support of test facts.
  - folder `performances_by_relation_properties` contains various scripts that show how the predictive performances of LP models vary, depending on the properties of the relations of test facts.
@@ -25,11 +24,6 @@ The project is structured as a set of Python scripts, each of which can be run s
 
 In each of these folders, the scripts to run in order to replicate the results of our paper are contained in the folders named `papers`.
  
-
-
-
-
-
 The experiments we report in 
 
 ### How to run the project (Linux/MacOS)
@@ -61,4 +55,7 @@ The experiments we report in
     In order to change the dataset on which to run the experiment, just change the value of variable `dataset_name` in the script you wish to launch.
     Acceptable values are `FB15K`, `FB15K_237`, `WN18`, `WN18RR` and `YAGO3_10`.
 
- 
+Please note that the data in folders `datasets` and `results` are required in order to launch most scripts in this repository.
+Those data can also be obtained by running the various scripts in folder `dataset_analysis`, that we include for the sake of completeness.
+
+The global performances of all models on both `min` and `avg` tie policies can be printed on screen by running the the script `print_global_performances.py`.
