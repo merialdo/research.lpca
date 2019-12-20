@@ -17,10 +17,12 @@ The project is structured as a set of Python scripts, each of which can be run s
   - Our findings for training times can be replicated by running script `barchart_training_times.py`
   - Our findings for prediction times can be replicated by running script `barchart_prediction_times.py` 
 - folder `effectiveness` contains the scripts to obtain our results on the effectiveness:
- - folder `performances_by_peers` contains various scripts that show how the predictive performances of LP models vary, depending on the number of source and target peers of test facts.
- - folder `performances_by_paths` contains various scripts that show how the predictive performances of LP models vary, depending on the Relational Path Support of test facts.
- - folder `performances_by_relation_properties` contains various scripts that show how the predictive performances of LP models vary, depending on the properties of the relations of test facts.
- - folder `performances_by_reified_relation_degree` contains various scripts that show how the predictive performances of LP models vary, depending on the degree of the original reified relation in FreeBase.
+  - folder `performances_by_peers` contains various scripts that show how the predictive performances of LP models vary, depending on the number of source and target peers of test facts.
+  - folder `performances_by_paths` contains various scripts that show how the predictive performances of LP models vary, depending on the Relational Path Support of test facts.
+  - folder `performances_by_relation_properties` contains various scripts that show how the predictive performances of LP models vary, depending on the properties of the relations of test facts.
+  - folder `performances_by_reified_relation_degree` contains various scripts that show how the predictive performances of LP models vary, depending on the degree of the original reified relation in FreeBase.
+- folder `dataset_analysis` contains various scripts to analyze the structural properties of the original datasets featured in our analysis (e.g. for computing the source peers and target peers for each test fact, or its Relational Path Support, etc).
+We share the results we obtained using these scripts in ...
 
 In each of these folders, the scripts to run in order to replicate the results of our paper are contained in the folders named `papers`.
  
