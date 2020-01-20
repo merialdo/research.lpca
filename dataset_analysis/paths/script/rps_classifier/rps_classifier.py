@@ -9,7 +9,8 @@ from collections import defaultdict
 import numpy as np
 
 import datasets
-from dataset_analysis.paths import relation_paths, graph_paths
+from dataset_analysis.paths import relation_paths_2_steps, graph_paths_2_steps
+from dataset_analysis.paths.graph_paths_2_steps import _build_key_for, _compute_1_step_paths_for, _compute_2_step_paths_for
 
 FOLDER = "paths"
 TEST_FACT_2_SUPPORT_FILENAME = "test_facts_with_tfidf_support.csv"
@@ -29,16 +30,68 @@ def _cosine_similarity(vector_a, vector_b):
     else:
         return 0.0
 
+
+def score(head, rel, tail,
+          entity_2_train_facts,
+          entity_pair_2_train_facts,
+          all_paths,
+          all_relations,
+          relation_2_tfidf_vec,
+          path_2_df):
+
+    # get all the relation paths that connect the head and the tail of this test fact
+    relation_paths_for_cur_fact = set()
+
+    one_step_paths_for_cur_fact = _compute_1_step_paths_for((head, rel, tail), entity_pair_2_train_facts)
+    two_step_paths_for_cur_fact = _compute_2_step_paths_for((head, rel, tail), entity_2_train_facts, entity_pair_2_train_facts)
+
+    for (one_step_path_head, one_step_path_rel, one_step_path_tail) in one_step_paths_for_cur_fact:
+        relation_paths_for_cur_fact.add(one_step_path_rel)
+    for ((two_step_path_head_1, two_step_path_rel_1, two_step_path_tail_1),
+         (two_step_path_head_2, two_step_path_rel_2, two_step_path_tail_2)) in two_step_paths_for_cur_fact:
+        relation_paths_for_cur_fact.add(two_step_path_rel_1 + SEPARATOR + two_step_path_rel_2)
+
+    relation_paths_for_cur_fact = list(relation_paths_for_cur_fact)
+
+    # initialize the TF-IDF vector for this test fact with zeros
+    tfidf_vector = np.zeros(len(all_paths), dtype=np.float)
+
+    for i in range(len(all_paths)):
+        path = all_paths[i]
+        if path in relation_paths_for_cur_fact:
+            tf = 1.0 / float(len(relation_paths_for_cur_fact))
+            idf = np.log(float(all_relations + 1.0) / float(path_2_df[path] + 1.0))
+            tfidf_vector[i] = tf * idf
+
+    value = _cosine_similarity(relation_2_tfidf_vec[rel], tfidf_vector)
+    return value
+
+
 def compute(dataset):
+    # compute:
+    #   - for each entity, all the facts that contain it
+    #   - for each couple of entities, all the facts that connect them
+    print("\tPre-analysis for dataset %s" % dataset.name)
+    entity_2_train_facts = defaultdict(lambda: [])
+    entity_pair_2_train_facts = defaultdict(lambda: [])
+    for train_triple in dataset.train_triples:
+        head, rel, tail = train_triple
+
+        # unescape the read triple (in Yago3 there are escaped parts that use ";", and we don't want that
+        head, rel, tail = html.unescape(head), html.unescape(rel), html.unescape(tail)
+        train_triple = (head, rel, tail)
+
+        entity_2_train_facts[head].append(train_triple)
+        entity_2_train_facts[tail].append(train_triple)
+        entity_pair_2_train_facts[_build_key_for(head, tail)].append(train_triple)
+
 
     print("Computing tf-idf support for each test fact in dataset %s..." % dataset.name)
 
-    # read, for all relations, the frequencies of all 1-step, 2-step and 3-step relation paths in the training set
-    relation_2_one_step_relation_path_counts, relation_2_two_step_relation_path_counts, relation_2_three_step_relation_path_counts = relation_paths.read(dataset)
-    # read, for each test fact, the training 1-step, 2-step and 3-step graph paths connecting its head with its tail
-    test_fact_2_one_step_graph_paths, test_fact_2_two_step_graph_paths, test_fact_2_three_step_graph_paths = graph_paths.read_test(dataset)
+    # read, for all relations, the frequencies of all 2-step and 2-step relation paths in the training set
+    relation_2_one_step_relation_path_counts, relation_2_two_step_relation_path_counts = relation_paths_2_steps.read(dataset)
 
-    # for each relation, get the list of all 1-step, 2-step, and 3-step relation paths
+    # for each relation, get the list of all one-step and 2-step relation paths
     # co-occurring at least once with that relation of all relation, sorted alphabetically
     all_paths = set()
     for relation in dataset.relationships:
@@ -50,9 +103,6 @@ def compute(dataset):
             all_paths.add(path)
         for path in relation_2_two_step_relation_path_counts[relation]:
             all_paths.add(path)
-        for path in relation_2_three_step_relation_path_counts[relation]:
-            all_paths.add(path)
-
     all_paths = sorted(list(all_paths))
 
 
@@ -71,8 +121,6 @@ def compute(dataset):
             path_2_df[one_step_path] += 1.0
         for two_step_path in relation_2_two_step_relation_path_counts[relation]:
             path_2_df[two_step_path] += 1.0
-        for three_step_path in relation_2_three_step_relation_path_counts[relation]:
-            path_2_df[three_step_path] += 1.0
 
 
 
@@ -95,17 +143,15 @@ def compute(dataset):
 
         relation_2_path_tf[relation] = dict()
 
-        # get the frequencies of 1-step, 2-step and 3-step relation paths with respect to the current relation
+        # get the frequencies of 1-step paths and 2-step paths to current relation
         one_step_path_2_count_in_current_relation = relation_2_one_step_relation_path_counts[relation]
         two_step_path_2_count_in_current_relation = relation_2_two_step_relation_path_counts[relation]
-        three_step_path_2_count_in_current_relation = relation_2_three_step_relation_path_counts[relation]
 
         # get the sum of frequencies of all paths
         overall_path_count_in_cur_rel = float(sum(one_step_path_2_count_in_current_relation.values()) + \
-                                              sum(two_step_path_2_count_in_current_relation.values()) + \
-                                              sum(three_step_path_2_count_in_current_relation.values()))
+                                              sum(two_step_path_2_count_in_current_relation.values()))
 
-        # for each 1-step path or 2-step path or 3-step path
+        # for each one-step path or 2_step_path
         # compute the TF as  path frequency / sum of frequencies of all paths
         for one_step_path in one_step_path_2_count_in_current_relation:
             count = float(one_step_path_2_count_in_current_relation[one_step_path])
@@ -113,9 +159,6 @@ def compute(dataset):
         for two_step_path in two_step_path_2_count_in_current_relation:
             count = float(two_step_path_2_count_in_current_relation[two_step_path])
             relation_2_path_tf[relation][two_step_path] = count/overall_path_count_in_cur_rel
-        for three_step_path in three_step_path_2_count_in_current_relation:
-            count = float(three_step_path_2_count_in_current_relation[three_step_path])
-            relation_2_path_tf[relation][three_step_path] = count/overall_path_count_in_cur_rel
 
 
     # ======= 3) COMPUTE IDF FOR EACH PATH
@@ -153,7 +196,6 @@ def compute(dataset):
 
     # ======= 4) COMPUTE TF-IDF VECTOR FOR EACH TEST FACT
 
-
     print("\tComputing TF-IDF vector for each test fact in dataset %s..." % dataset.name)
 
     test_fact_2_tfidf_vec = dict()
@@ -161,61 +203,66 @@ def compute(dataset):
     # compute for each relation a vector containing the TF-IDF value
     # for all of the relation paths that connect its head with its tail
     # (
-    start = time.time()
-    for test_fact_index in range(len(dataset.test_triples)):
-        end = time.time()
 
-        if test_fact_index % 1000 == 0:
-            interval = float(end * 1000 - start * 1000)/1000
-            print("\t\ttest fact: %i; time = %f" % (test_fact_index, interval))
-            start = time.time()
 
+    #for test_fact_index in range(len(dataset.test_triples)):
+    for test_fact_index in range(0, 100):
         (test_head, test_rel, test_tail) = dataset.test_triples[test_fact_index]
-
-        # unescape the read fact (in Yago3 there are escaped parts that use ";", and we don't want that
         test_head, test_rel, test_tail = html.unescape(test_head), html.unescape(test_rel), html.unescape(test_tail)
 
-        test_fact_key = SEPARATOR.join([test_head, test_rel, test_tail])
+        target_score = score(test_head, test_rel, test_tail,
+                             entity_2_train_facts,
+                             entity_pair_2_train_facts,
+                             all_paths,
+                             all_relations,
+                             relation_2_tfidf_vec,
+                             path_2_df)
+        head_rank = 1
+        tail_rank = 1
 
-        # get all the relation paths that connect the head and the tail of this test fact
-        relation_paths_for_this_test_fact = set()
-        for (one_step_path_head, one_step_path_rel, one_step_path_tail) in test_fact_2_one_step_graph_paths[test_fact_key]:
-            relation_paths_for_this_test_fact.add(one_step_path_rel)
-        for ((two_step_path_head_1, two_step_path_rel_1, two_step_path_tail_1),
-             (two_step_path_head_2, two_step_path_rel_2, two_step_path_tail_2)) in test_fact_2_two_step_graph_paths[test_fact_key]:
-            relation_paths_for_this_test_fact.add(two_step_path_rel_1 + SEPARATOR + two_step_path_rel_2)
-        for ((three_step_path_head_1, three_step_path_rel_1, three_step_path_tail_1),
-             (three_step_path_head_2, three_step_path_rel_2, three_step_path_tail_2),
-             (three_step_path_head_3, three_step_path_rel_3, three_step_path_tail_3)) in test_fact_2_three_step_graph_paths[test_fact_key]:
-            relation_paths_for_this_test_fact.add(SEPARATOR.join([three_step_path_rel_1, three_step_path_rel_2, three_step_path_rel_3]))
+        start = time.time()
+        all_entities = list(dataset.entities)
+        for i in range(len(all_entities)):
+            entity = all_entities[i]
+            entity = html.unescape(entity)
 
+            if (test_head, test_rel, entity) in dataset.train_triples or \
+                (test_head, test_rel, entity) in dataset.test_triples or \
+                (test_head, test_rel, entity) in dataset.valid_triples:
+                continue
 
-        relation_paths_for_this_test_fact = list(relation_paths_for_this_test_fact)
+            cur_score = score(test_head, test_rel, entity,
+                             entity_2_train_facts,
+                             entity_pair_2_train_facts,
+                             all_paths,
+                             all_relations,
+                             relation_2_tfidf_vec,
+                             path_2_df)
+            if cur_score >= target_score:
+                tail_rank+=1
 
-        # initialize the TF-IDF vector for this test fact with zeros
-        tfidf_vector = np.zeros(len(all_paths), dtype=np.float)
-        for i in range(len(all_paths)):
-            # for each path, if the path co-occurs with this test fact,
-            #   - TF = freq of the path to this test fact / sum of frequencies of all relation paths to this fact
-            #        NOTE:  this is just a TEST FACT, and not a relation path with multiple instances (graph paths).
-            #               As a consequence, relation path frequencies to this fact are
-            #                        1 if the path co-occurs with the test fact
-            #                        0 otherwise
-            #               Therefore:
-            #                   freq of the path to this fact = 1
-            #                   sum of frequencies of paths to this fact = number of paths co-occurring with this fact
-            #   - IDF = log(num of documents / num of documents this relation path co-occurs at least once)
-            #        NOTE:  num of documents = num of relations + 1,
-            #               num of documents this path co-occurs at least once = path_2_df[path] + 1
-            #                   (the +1 are added because we are also considering this additional fact)
-            path = all_paths[i]
-            if path in relation_paths_for_this_test_fact:
-                tf = 1.0/float(len(relation_paths_for_this_test_fact))
-                idf = np.log(float(all_relations+1.0)/float(path_2_df[path]+1.0))
-                tfidf_vector[i] = tf*idf
-            # (otherwise, the TF-IDF value of the path with this test fact is just zero, so don't update anything)
+        for i in range(len(all_entities)):
+            entity = all_entities[i]
+            entity = html.unescape(entity)
 
-        test_fact_2_tfidf_vec[test_fact_key]=tfidf_vector
+            if (entity, test_rel, test_tail) in dataset.train_triples or \
+                (entity, test_rel, test_tail) in dataset.test_triples or \
+                (entity, test_rel, test_tail) in dataset.valid_triples:
+                continue
+
+            cur_score = score(entity, test_rel, test_tail,
+                             entity_2_train_facts,
+                             entity_pair_2_train_facts,
+                             all_paths,
+                             all_relations,
+                             relation_2_tfidf_vec,
+                             path_2_df)
+            if cur_score >= target_score:
+                head_rank+=1
+        end = time.time()
+
+        print(test_head + ";" + test_rel + ";" + test_tail + ";" + str(head_rank) + ";" + str(tail_rank) + ";")
+        print("\tcomputed in " + str(end-start))
 
     # ======= 5) COMPUTE COSINE SIMILARITIES
     test_fact_2_support = dict()
@@ -269,5 +316,5 @@ def read(dataset):
 #save(datasets.Dataset(datasets.FB15K))
 #save(datasets.Dataset(datasets.FB15K_237))
 #save(datasets.Dataset(datasets.WN18))
-#save(datasets.Dataset(datasets.WN18RR))
+save(datasets.Dataset(datasets.WN18RR))
 #save(datasets.Dataset(datasets.YAGO3_10))

@@ -32,14 +32,18 @@
         - finally, we aggregate by the type of the relation r in the original fact,
         and see how many times each RELATION PATH co-occurs with r
 """
-
+import gc
+import gzip
 import html
 import operator
 import os
 from collections import defaultdict
 
 import datasets
-from dataset_analysis.paths import graph_paths
+
+from dataset_analysis.paths.graph_paths import _read_one_step_paths_from_file, _read_two_step_paths_from_file, \
+    TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME, \
+    TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME, PATHS_IN_LIST_SEPARATOR
 
 FOLDER = "paths"
 ONE_STEP_RELATION_PATHS_FILENAME = "relations_with_train_one_step_relation_paths_frequency.csv"
@@ -81,7 +85,10 @@ def compute(dataset):
     relation_2_two_step_relation_paths = defaultdict(lambda:defaultdict(lambda: 0))
     relation_2_three_step_relation_paths = defaultdict(lambda:defaultdict(lambda: 0))
 
-    train_fact_to_one_step_graph_paths, train_fact_to_two_step_graph_paths, train_fact_to_three_step_graph_paths = graph_paths.read_train(dataset)
+    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
+    print("Reading one-step graph paths for train facts of dataset %s into location %s" % (dataset.name, input_filepath))
+    train_fact_to_one_step_graph_paths = _read_one_step_paths_from_file(input_filepath)
+
     print("Computing frequencies of 1-step relation paths for dataset %s..." % dataset.name)
 
     # for each training fact (that MAY be a self-loop)
@@ -102,6 +109,12 @@ def compute(dataset):
         for one_step_relation_path in relation_paths_encountered_for_this_fact:
             relation_2_one_step_relation_paths[fact_relation][one_step_relation_path] += 1
 
+
+
+    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+    print("Reading two-step graph paths for train facts of dataset %s into location %s" % (dataset.name, input_filepath))
+    train_fact_to_two_step_graph_paths = _read_two_step_paths_from_file(input_filepath)
+
     print("Computing frequencies of 2-step relation paths for dataset %s..." % dataset.name)
     # for each training fact (that MAY be a self-loop)
     for fact_key in train_fact_to_two_step_graph_paths:
@@ -121,24 +134,34 @@ def compute(dataset):
         for two_step_relation_path in relation_paths_encountered_for_this_fact:
             relation_2_two_step_relation_paths[fact_relation][two_step_relation_path] += 1
 
+
+    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
     print("Computing frequencies of 3-step relation paths for dataset %s..." % dataset.name)
-    # for each training fact (that MAY be a self-loop)
-    for fact_key in train_fact_to_three_step_graph_paths:
 
-        # get its relation
-        _, fact_relation, _ = fact_key.split(SEPARATOR)
+    with gzip.open(input_filepath, "rt") as input_file:
+        i = 0
 
-        # get all the 3-step GRAPH PATHS from the fact head to the fact tail
-        three_step_graph_paths = train_fact_to_three_step_graph_paths[fact_key]
+        for line in input_file:
+            i+= 1
+            line = html.unescape(line)  # this may be needed by YAGO, that has some &amp; stuff
+            head, rel, tail, three_step_paths = line.strip().split(SEPARATOR, 3)
+            three_step_paths = three_step_paths[1:-1]
 
-        # extract the set of 3-step RELATION PATHS from the 3-step GRAPH PATHS,
-        # and for each one of them add 1 to the result dict under the fact_relation
-        relation_paths_encountered_for_this_fact = set()
-        for three_step_graph_path in three_step_graph_paths:
-            (_, step_one_rel, _), (_, step_two_rel, _), (_, step_three_rel, _) = three_step_graph_path
-            relation_paths_encountered_for_this_fact.add(SEPARATOR.join([step_one_rel, step_two_rel, step_three_rel]))
-        for three_step_relation_path in relation_paths_encountered_for_this_fact:
-            relation_2_three_step_relation_paths[fact_relation][three_step_relation_path] += 1
+            relation_paths_encountered_for_this_fact = set()
+
+            if three_step_paths != "":
+                three_step_paths = three_step_paths.split(PATHS_IN_LIST_SEPARATOR)
+
+                for three_step_path in three_step_paths:
+                    _, r1, _, _, r2, _, _, r3, _ = three_step_path.split(SEPARATOR)
+                    relation_paths_encountered_for_this_fact.add(SEPARATOR.join([r1, r2, r3]))
+
+            for relpath in relation_paths_encountered_for_this_fact:
+                relation_2_three_step_relation_paths[rel][relpath] += 1
+
+            if i % 10000 == 0:
+                print(i)
+                gc.collect()
 
     return relation_2_one_step_relation_paths, \
            relation_2_two_step_relation_paths, \

@@ -10,6 +10,7 @@ import numpy as np
 
 import datasets
 from dataset_analysis.paths import relation_paths, graph_paths
+from dataset_analysis.paths.graph_paths import _compute_1_step_paths_for, _compute_2_step_paths_for, _build_key_for
 
 FOLDER = "paths"
 TEST_FACT_2_SUPPORT_FILENAME = "test_facts_with_tfidf_support.csv"
@@ -33,12 +34,12 @@ def compute(dataset):
 
     print("Computing tf-idf support for each test fact in dataset %s..." % dataset.name)
 
-    # read, for all relations, the frequencies of all 1-step, 2-step and 3-step relation paths in the training set
-    relation_2_one_step_relation_path_counts, relation_2_two_step_relation_path_counts, relation_2_three_step_relation_path_counts = relation_paths.read(dataset)
-    # read, for each test fact, the training 1-step, 2-step and 3-step graph paths connecting its head with its tail
-    test_fact_2_one_step_graph_paths, test_fact_2_two_step_graph_paths, test_fact_2_three_step_graph_paths = graph_paths.read_test(dataset)
+    # read, for all relations, the frequencies of all 2-step and 2-step relation paths in the training set
+    relation_2_one_step_relation_path_counts, relation_2_two_step_relation_path_counts = relation_paths.read(dataset)
+    # read, for each test fact, the training one-step graph paths and training two-step graph paths connecting its head with its tail
+    test_fact_2_one_step_graph_paths, test_fact_2_two_step_graph_paths = graph_paths.read_test(dataset)
 
-    # for each relation, get the list of all 1-step, 2-step, and 3-step relation paths
+    # for each relation, get the list of all one-step and 2-step relation paths
     # co-occurring at least once with that relation of all relation, sorted alphabetically
     all_paths = set()
     for relation in dataset.relationships:
@@ -50,9 +51,6 @@ def compute(dataset):
             all_paths.add(path)
         for path in relation_2_two_step_relation_path_counts[relation]:
             all_paths.add(path)
-        for path in relation_2_three_step_relation_path_counts[relation]:
-            all_paths.add(path)
-
     all_paths = sorted(list(all_paths))
 
 
@@ -71,8 +69,6 @@ def compute(dataset):
             path_2_df[one_step_path] += 1.0
         for two_step_path in relation_2_two_step_relation_path_counts[relation]:
             path_2_df[two_step_path] += 1.0
-        for three_step_path in relation_2_three_step_relation_path_counts[relation]:
-            path_2_df[three_step_path] += 1.0
 
 
 
@@ -95,17 +91,15 @@ def compute(dataset):
 
         relation_2_path_tf[relation] = dict()
 
-        # get the frequencies of 1-step, 2-step and 3-step relation paths with respect to the current relation
+        # get the frequencies of 1-step paths and 2-step paths to current relation
         one_step_path_2_count_in_current_relation = relation_2_one_step_relation_path_counts[relation]
         two_step_path_2_count_in_current_relation = relation_2_two_step_relation_path_counts[relation]
-        three_step_path_2_count_in_current_relation = relation_2_three_step_relation_path_counts[relation]
 
         # get the sum of frequencies of all paths
         overall_path_count_in_cur_rel = float(sum(one_step_path_2_count_in_current_relation.values()) + \
-                                              sum(two_step_path_2_count_in_current_relation.values()) + \
-                                              sum(three_step_path_2_count_in_current_relation.values()))
+                                              sum(two_step_path_2_count_in_current_relation.values()))
 
-        # for each 1-step path or 2-step path or 3-step path
+        # for each one-step path or 2_step_path
         # compute the TF as  path frequency / sum of frequencies of all paths
         for one_step_path in one_step_path_2_count_in_current_relation:
             count = float(one_step_path_2_count_in_current_relation[one_step_path])
@@ -113,9 +107,6 @@ def compute(dataset):
         for two_step_path in two_step_path_2_count_in_current_relation:
             count = float(two_step_path_2_count_in_current_relation[two_step_path])
             relation_2_path_tf[relation][two_step_path] = count/overall_path_count_in_cur_rel
-        for three_step_path in three_step_path_2_count_in_current_relation:
-            count = float(three_step_path_2_count_in_current_relation[three_step_path])
-            relation_2_path_tf[relation][three_step_path] = count/overall_path_count_in_cur_rel
 
 
     # ======= 3) COMPUTE IDF FOR EACH PATH
@@ -184,11 +175,6 @@ def compute(dataset):
         for ((two_step_path_head_1, two_step_path_rel_1, two_step_path_tail_1),
              (two_step_path_head_2, two_step_path_rel_2, two_step_path_tail_2)) in test_fact_2_two_step_graph_paths[test_fact_key]:
             relation_paths_for_this_test_fact.add(two_step_path_rel_1 + SEPARATOR + two_step_path_rel_2)
-        for ((three_step_path_head_1, three_step_path_rel_1, three_step_path_tail_1),
-             (three_step_path_head_2, three_step_path_rel_2, three_step_path_tail_2),
-             (three_step_path_head_3, three_step_path_rel_3, three_step_path_tail_3)) in test_fact_2_three_step_graph_paths[test_fact_key]:
-            relation_paths_for_this_test_fact.add(SEPARATOR.join([three_step_path_rel_1, three_step_path_rel_2, three_step_path_rel_3]))
-
 
         relation_paths_for_this_test_fact = list(relation_paths_for_this_test_fact)
 

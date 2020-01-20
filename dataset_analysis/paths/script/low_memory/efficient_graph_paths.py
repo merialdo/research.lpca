@@ -26,6 +26,7 @@
         This is a RELATION PATH:
             place of birth, located in
 """
+import gc
 import gzip
 import html
 import os
@@ -400,7 +401,39 @@ def _compute_3_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_fa
 
 
 
-def compute(dataset):
+def _flush_paths_into_files(cur_batch,
+                            fact_to_1_step_paths, fact_to_2_step_paths, fact_to_3_step_paths,
+                            filepath_1_step, filepath_2_step, filepath_3_step):
+
+    # FLUSH EVERYTHING FOUND SO FAR
+    lines_1_step = []
+    lines_2_step = []
+    lines_3_step = []
+
+    for cur_fact in cur_batch:
+        cur_fact_key = SEPARATOR.join(cur_fact)
+        paths_1 = [SEPARATOR.join(x) for x in fact_to_1_step_paths[cur_fact_key]]
+        paths_1_str = PATHS_IN_LIST_SEPARATOR.join(paths_1)
+
+        paths_2 = [SEPARATOR.join(x[0] + x[1]) for x in fact_to_2_step_paths[cur_fact_key]]
+        paths_2_str = PATHS_IN_LIST_SEPARATOR.join(paths_2)
+
+        paths_3 = [SEPARATOR.join(x[0] + x[1] + x[2]) for x in fact_to_3_step_paths[cur_fact_key]]
+        paths_3_str = PATHS_IN_LIST_SEPARATOR.join(paths_3)
+
+        lines_1_step.append(cur_fact_key + SEPARATOR + "[" + paths_1_str + "]" + "\n")
+        lines_2_step.append(cur_fact_key + SEPARATOR + "[" + paths_2_str + "]" + "\n")
+        lines_3_step.append(cur_fact_key + SEPARATOR + "[" + paths_3_str + "]" + "\n")
+
+    with open(filepath_1_step, "a") as out_1_step:
+        out_1_step.writelines(lines_1_step)
+    with open(filepath_2_step, "a") as out_2_step:
+        out_2_step.writelines(lines_2_step)
+    with gzip.open(filepath_3_step, "at") as out_3_step:
+        out_3_step.writelines(lines_3_step)
+
+
+def compute_and_progressively_save(dataset):
     """
         For both training facts and test facts of a specific dataset,
         extract all training 1-step graph paths, training 2-step and training 3-step graph paths
@@ -413,165 +446,117 @@ def compute(dataset):
 
     print("Computing graph paths for train and test facts in dataset %s" % dataset.name)
 
-    train_fact_to_one_step_paths = dict()
-    train_fact_to_two_step_paths = dict()
-    train_fact_to_three_step_paths = dict()
-
-    test_fact_to_one_step_paths = dict()
-    test_fact_to_two_step_paths = dict()
-    test_fact_to_three_step_paths = dict()
-
     print("\tPre-analysis for dataset %s" % dataset.name)
     entity_2_train_facts, entity_pair_2_train_facts = _pre_analysis(dataset)
 
     # get training 1-step graph paths and training 1-step graph paths for all training facts in the dataset
     print("\tComputing graph paths for train facts in dataset %s" % dataset.name)
+
+
+    output_train_filepath_one_step_paths = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
+    output_train_filepath_two_step_paths = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+    output_train_filepath_three_step_paths = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
+
+    if os.path.isfile(output_train_filepath_one_step_paths):
+        os.remove(output_train_filepath_one_step_paths)
+    if os.path.isfile(output_train_filepath_two_step_paths):
+        os.remove(output_train_filepath_two_step_paths)
+    if os.path.isfile(output_train_filepath_three_step_paths):
+        os.remove(output_train_filepath_three_step_paths)
+
+    train_fact_to_one_step_paths = dict()
+    train_fact_to_two_step_paths = dict()
+    train_fact_to_three_step_paths = dict()
+
+    current_train_fact_batch = []
+
     start = time.time()
     for i in range(len(dataset.train_triples)):
         fact = dataset.train_triples[i]
 
         # unescape the fact (in Yago3 there are escaped parts that use ";", and we don't want that
         fact = (html.unescape(fact[0]), html.unescape(fact[1]), html.unescape(fact[2]))
+        current_train_fact_batch.append(fact)
 
         train_fact_to_one_step_paths[SEPARATOR.join(fact)] = _compute_1_step_paths_for(fact, entity_pair_2_train_facts)
         train_fact_to_two_step_paths[SEPARATOR.join(fact)] = _compute_2_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
         train_fact_to_three_step_paths[SEPARATOR.join(fact)] = _compute_3_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
 
-        if i % 1000 == 0:
+        if i > 0 and i % 1000 == 0:
+            # FLUSH EVERYTHING FOUND SO FAR
+            _flush_paths_into_files(current_train_fact_batch,
+                                    train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths,
+                                    output_train_filepath_one_step_paths, output_train_filepath_two_step_paths, output_train_filepath_three_step_paths)
+
+            # CLEAN THE DATA STRUCTURES AND GARBAGE COLLECTION TO FREE MEMORY
+            train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths = dict(), dict(), dict()
+            current_train_fact_batch = []
+            gc.collect()
+
+            # PRINT TIME
             end = time.time()
             interval = (float(round(end * 1000)) - float(round(start * 1000)))/1000
             print("\t\t%i training facts processed so far; time = %f" % (i, interval))
             start = end
 
+    if len(dataset.train_triples) % 1000 != 0:
+        _flush_paths_into_files(current_train_fact_batch,
+                                train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths,
+                                output_train_filepath_one_step_paths, output_train_filepath_two_step_paths, output_train_filepath_three_step_paths)
+
     # get 1-step, 2-step and 3-step graph paths for all test facts in the dataset
-    print("\tComputing all graph paths for test facts in dataset %s" % dataset.name)
+    print("\tComputing graph paths for test facts in dataset %s" % dataset.name)
+
+    output_test_filepath_one_step_paths = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
+    output_test_filepath_two_step_paths = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+    output_test_filepath_three_step_paths = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
+
+    if os.path.isfile(output_test_filepath_one_step_paths):
+        os.remove(output_test_filepath_one_step_paths)
+    if os.path.isfile(output_test_filepath_two_step_paths):
+        os.remove(output_test_filepath_two_step_paths)
+    if os.path.isfile(output_test_filepath_three_step_paths):
+        os.remove(output_test_filepath_three_step_paths)
+
+    test_fact_to_one_step_paths = dict()
+    test_fact_to_two_step_paths = dict()
+    test_fact_to_three_step_paths = dict()
+
+    current_test_fact_batch = []
+
     start = time.time()
     for i in range(len(dataset.test_triples)):
         fact = dataset.test_triples[i]
-
         # unescape the fact (in Yago3 there are escaped parts that use ";", and we don't want that
         fact = (html.unescape(fact[0]), html.unescape(fact[1]), html.unescape(fact[2]))
+
+        current_test_fact_batch.append(fact)
 
         test_fact_to_one_step_paths[SEPARATOR.join(fact)] = _compute_1_step_paths_for(fact, entity_pair_2_train_facts)
         test_fact_to_two_step_paths[SEPARATOR.join(fact)] = _compute_2_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
         test_fact_to_three_step_paths[SEPARATOR.join(fact)] = _compute_3_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
 
-        if i % 1000 == 0:
+        if i > 0 and i % 1000 == 0:
+            # FLUSH EVERYTHING FOUND SO FAR
+            _flush_paths_into_files(current_test_fact_batch,
+                                    test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths,
+                                    output_test_filepath_one_step_paths, output_test_filepath_two_step_paths, output_test_filepath_three_step_paths)
+
+            # CLEAN THE DATA STRUCTURES AND GARBAGE COLLECTION TO FREE MEMORY
+            test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths = dict(), dict(), dict()
+            current_test_fact_batch = []
+            gc.collect()
+
+            # PRINT TIME
             end = time.time()
-            interval = (float(round(end * 1000)) - float(round(start * 1000)))/1000
+            interval = (float(round(end * 1000)) - float(round(start * 1000))) / 1000
             print("\t\t%i test facts processed so far; time = %f" % (i, interval))
             start = end
 
-    return train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths, \
-           test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths
-
-def save(dataset):
-    """
-        Compute for both the training facts and the test facts of a datasetm
-        the graph paths of length 1 or 2 that connect the head and tail entity of each fact
-        and save the found associations in a text file.
-
-        The graph paths for training facts and test facts will be written into separate files.
-
-        The file structure will be, in both cases:
-            H ; r ; T ; [ H;s;T | H;t;T | ... ]
-            H ; r ; T ; [ H;s;X;X;t;T | H;s1;Z;Z;t1;T |  ... ]
-
-        (whitespaces added for greater clarity)
-
-        :param dataset: the dataset to compute the mappings for
-    """
-    train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths, \
-    test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths = compute(dataset)
-
-    one_step_train_lines = []
-    two_step_train_lines = []
-    three_step_train_lines = []
-
-    for train_fact in dataset.train_triples:
-
-        # unescape the fact (in Yago3 there are escaped parts that use ";", and we don't want that
-        train_fact = (html.unescape(train_fact[0]), html.unescape(train_fact[1]), html.unescape(train_fact[2]))
-
-        train_fact_key = SEPARATOR.join(train_fact)
-        one_step_paths = []
-        two_step_paths = []
-        three_step_paths = []
-
-        for path in train_fact_to_one_step_paths[train_fact_key]:
-            one_step_paths.append(SEPARATOR.join(path))
-        one_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(one_step_paths)
-
-        for path in train_fact_to_two_step_paths[train_fact_key]:
-            two_step_paths.append(SEPARATOR.join(path[0] + path[1]))
-        two_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(two_step_paths)
-
-        for path in train_fact_to_three_step_paths[train_fact_key]:
-            three_step_paths.append(SEPARATOR.join(path[0] + path[1] + path[2]))
-        three_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(three_step_paths)
-
-        one_step_train_lines.append(train_fact_key + SEPARATOR + "[" + one_step_paths_str + "]" + "\n")
-        two_step_train_lines.append(train_fact_key + SEPARATOR + "[" + two_step_paths_str + "]" + "\n")
-        three_step_train_lines.append(train_fact_key + SEPARATOR + "[" + three_step_paths_str + "]" + "\n")
-
-    one_step_test_lines = []
-    two_step_test_lines = []
-    three_step_test_lines = []
-
-    for test_fact in dataset.test_triples:
-        # unescape the fact (in Yago3 there are escaped parts that use ";", and we don't want that
-        test_fact = (html.unescape(test_fact[0]), html.unescape(test_fact[1]), html.unescape(test_fact[2]))
-
-        test_fact_key = SEPARATOR.join(test_fact)
-        one_step_paths = []
-        two_step_paths = []
-        three_step_paths = []
-
-        for path in test_fact_to_one_step_paths[test_fact_key]:
-            one_step_paths.append(SEPARATOR.join(path))
-        one_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(one_step_paths)
-
-        for path in test_fact_to_two_step_paths[test_fact_key]:
-            two_step_paths.append(SEPARATOR.join(path[0] + path[1]))
-        two_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(two_step_paths)
-
-        for path in test_fact_to_three_step_paths[test_fact_key]:
-            three_step_paths.append(SEPARATOR.join(path[0] + path[1] + path[2]))
-        three_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(three_step_paths)
-
-        one_step_test_lines.append(test_fact_key + SEPARATOR + "[" + one_step_paths_str + "]" + "\n")
-        two_step_test_lines.append(test_fact_key + SEPARATOR + "[" + two_step_paths_str + "]" + "\n")
-        three_step_test_lines.append(test_fact_key + SEPARATOR + "[" + three_step_paths_str + "]" + "\n")
-
-    output_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving one-step graph paths for train facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with open(output_filepath, "w") as output_file:
-        output_file.writelines(one_step_train_lines)
-
-    output_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving two-step graph paths for train facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with open(output_filepath, "w") as output_file:
-        output_file.writelines(two_step_train_lines)
-
-    output_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving three-step graph paths for train facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with gzip.open(output_filepath, "wt") as output_file:
-        output_file.writelines(three_step_train_lines)
-
-    output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving one-step graph paths for test facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with open(output_filepath, "w") as output_file:
-        output_file.writelines(one_step_test_lines)
-
-    output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving two-step graph paths for test facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with open(output_filepath, "w") as output_file:
-        output_file.writelines(two_step_test_lines)
-
-    output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving three-step graph paths for test facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with open(output_filepath, "w") as output_file:
-        output_file.writelines(three_step_test_lines)
+    if len(dataset.test_triples) % 1000 != 0:
+        _flush_paths_into_files(current_test_fact_batch,
+                                test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths,
+                                output_test_filepath_one_step_paths, output_test_filepath_two_step_paths, output_test_filepath_three_step_paths)
 
 
 def _read_one_step_paths_from_file(input_filepath):
@@ -619,7 +604,6 @@ def _read_two_step_paths_from_file(input_filepath):
 
 
 def _read_three_step_paths_from_file(input_filepath):
-    print(input_filepath)
     fact_to_three_step_paths = defaultdict(lambda: [])
 
     if input_filepath.endswith(".gz"):
@@ -710,8 +694,8 @@ def read_test(dataset):
 
     return test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths
 
-#save(datasets.Dataset(datasets.FB15K))
-#save(datasets.Dataset(datasets.FB15K_237))
-#save(datasets.Dataset(datasets.WN18))
-#save(datasets.Dataset(datasets.WN18RR))
-#save(datasets.Dataset(datasets.YAGO3_10))
+compute_and_progressively_save(datasets.Dataset(datasets.FB15K))
+#compute_and_progressively_save(datasets.Dataset(datasets.FB15K_237))
+#compute_and_progressively_save(datasets.Dataset(datasets.WN18))
+#compute_and_progressively_save(datasets.Dataset(datasets.WN18RR))
+#compute_and_progressively_save(datasets.Dataset(datasets.YAGO3_10))
