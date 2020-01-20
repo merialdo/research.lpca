@@ -91,8 +91,8 @@ def predict_fact(procnum,
                          path_2_df)
     head_rank = 1
     tail_rank = 1
-    head_ties = 1
-    tail_ties = 1
+    head_ties = 0
+    tail_ties = 0
 
     start = time.time()
     all_entities = list(dataset.entities)
