@@ -15,7 +15,8 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pylab as plt
 
-dataset_name = FB15K
+dataset_name = WN18
+MAX_STEPS = 2
 dataset = Dataset(dataset_name)
 all_models_names = models.ALL_MODEL_NAMES
 
@@ -33,8 +34,6 @@ BUCKETS=( (0.0, 0.1),
           (0.8, 0.9),
           (0.9, 1.0) )
 
-
-
 def get_support_bucket_from_support(support_value):
     for bucket in BUCKETS:
         if bucket[0] <= support_value < bucket[1]:
@@ -42,13 +41,11 @@ def get_support_bucket_from_support(support_value):
     if support_value == 1.0:
         return 0.9, 1.0
 
-
-
 # === count and percentage of facts in each path support interval ===
 path_support_bucket_2_count = defaultdict(lambda: 0.0)
 path_support_interval_2_percentage = defaultdict(lambda: 0.0)
 
-test_fact_2_tfidf_path_support = tfidf_support.read(dataset)
+test_fact_2_tfidf_path_support = tfidf_support.read(dataset, MAX_STEPS)
 for fact in dataset.test_triples:
     fact_key = html.unescape(";".join(fact))
     support_value = test_fact_2_tfidf_path_support[fact_key]
@@ -66,10 +63,6 @@ for i in range(len(BUCKETS)):
 
 for bucket in BUCKETS:
     path_support_interval_2_percentage[bucket] = support_bucket_2_incremental_count[bucket]/(float(all_test_facts_number)*2) # head and tail
-
-
-
-
 
 
 
@@ -154,7 +147,7 @@ ax2.grid()
 
 
 ax1.set_ylabel("H@1 of facts up to that RPS value", fontsize=12)
-ax2.set_xlabel("RPS value", fontsize=12)
+ax2.set_xlabel("RPS value (max path length = " + str(MAX_STEPS) + ")", fontsize=12)
 
 ax1.tick_params(axis="x", labelsize=12)
 ax1.tick_params(axis="y", labelsize=12)

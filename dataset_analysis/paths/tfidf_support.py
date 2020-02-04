@@ -12,7 +12,9 @@ import datasets
 from dataset_analysis.paths import relation_paths, graph_paths
 
 FOLDER = "paths"
-TEST_FACT_2_SUPPORT_FILENAME = "test_facts_with_tfidf_support.csv"
+TEST_FACT_2_SUPPORT_MAX1_FILENAME = "test_facts_with_max1_RPS.csv"
+TEST_FACT_2_SUPPORT_MAX2_FILENAME = "test_facts_with_max2_RPS.csv"
+TEST_FACT_2_SUPPORT_MAX3_FILENAME = "test_facts_with_max3_RPS.csv"
 SEPARATOR=";"
 
 def _cosine_similarity(vector_a, vector_b):
@@ -29,14 +31,33 @@ def _cosine_similarity(vector_a, vector_b):
     else:
         return 0.0
 
-def compute(dataset):
+def compute(dataset, max_steps=3):
 
     print("Computing tf-idf support for each test fact in dataset %s..." % dataset.name)
 
-    # read, for all relations, the frequencies of all 1-step, 2-step and 3-step relation paths in the training set
-    relation_2_one_step_relation_path_counts, relation_2_two_step_relation_path_counts, relation_2_three_step_relation_path_counts = relation_paths.read(dataset)
-    # read, for each test fact, the training 1-step, 2-step and 3-step graph paths connecting its head with its tail
-    test_fact_2_one_step_graph_paths, test_fact_2_two_step_graph_paths, test_fact_2_three_step_graph_paths = graph_paths.read_test(dataset)
+    #initialize as empty dicts
+    relation_2_one_step_relation_path_counts = defaultdict(lambda:[])
+    relation_2_two_step_relation_path_counts = defaultdict(lambda:[])
+    relation_2_three_step_relation_path_counts = defaultdict(lambda:[])
+    test_fact_2_one_step_graph_paths = defaultdict(lambda:[])
+    test_fact_2_two_step_graph_paths = defaultdict(lambda:[])
+    test_fact_2_three_step_graph_paths = defaultdict(lambda:[])
+
+    if max_steps == 1:
+        # read, for all relations, the frequencies of all 1-step relation paths in the training set
+        relation_2_one_step_relation_path_counts = relation_paths.read(dataset, max_steps)
+        # read, for each test fact, the training 1-step, graph paths connecting its head with its tail
+        test_fact_2_one_step_graph_paths = graph_paths.read_test(dataset, max_steps)
+    elif max_steps == 2:
+        # read, for all relations, the frequencies of all 1-step and 2-step relation paths in the training set
+        relation_2_one_step_relation_path_counts, relation_2_two_step_relation_path_counts = relation_paths.read(dataset, max_steps)
+        # read, for each test fact, the training 1-step and 2-step graph paths connecting its head with its tail
+        test_fact_2_one_step_graph_paths, test_fact_2_two_step_graph_paths = graph_paths.read_test(dataset, max_steps)
+    else:
+        # read, for all relations, the frequencies of all 1-step, 2-step and 3-step relation paths in the training set
+        relation_2_one_step_relation_path_counts, relation_2_two_step_relation_path_counts, relation_2_three_step_relation_path_counts = relation_paths.read(dataset)
+        # read, for each test fact, the training 1-step, 2-step and 3-step graph paths connecting its head with its tail
+        test_fact_2_one_step_graph_paths, test_fact_2_two_step_graph_paths, test_fact_2_three_step_graph_paths = graph_paths.read_test(dataset)
 
     # for each relation, get the list of all 1-step, 2-step, and 3-step relation paths
     # co-occurring at least once with that relation of all relation, sorted alphabetically
@@ -46,11 +67,11 @@ def compute(dataset):
         # unescape the relation (in Yago3 there are escaped parts that use ";", and we don't want that
         relation = html.unescape(relation)
 
-        for path in relation_2_one_step_relation_path_counts[relation]:
-            all_paths.add(path)
-        for path in relation_2_two_step_relation_path_counts[relation]:
-            all_paths.add(path)
-        for path in relation_2_three_step_relation_path_counts[relation]:
+        #for path in relation_2_one_step_relation_path_counts[relation]:
+        #    all_paths.add(path)
+        #for path in relation_2_two_step_relation_path_counts[relation]:     #empty if max_steps < 2
+        #    all_paths.add(path)
+        for path in relation_2_three_step_relation_path_counts[relation]:   #empty if max_steps < 3
             all_paths.add(path)
 
     all_paths = sorted(list(all_paths))
@@ -67,13 +88,12 @@ def compute(dataset):
         # unescape the relation (in Yago3 there are escaped parts that use ";", and we don't want that
         relation = html.unescape(relation)
 
-        for one_step_path in relation_2_one_step_relation_path_counts[relation]:
-            path_2_df[one_step_path] += 1.0
-        for two_step_path in relation_2_two_step_relation_path_counts[relation]:
-            path_2_df[two_step_path] += 1.0
-        for three_step_path in relation_2_three_step_relation_path_counts[relation]:
+        #for one_step_path in relation_2_one_step_relation_path_counts[relation]:
+        #    path_2_df[one_step_path] += 1.0
+        #for two_step_path in relation_2_two_step_relation_path_counts[relation]:       #empty if max_steps < 2
+        #    path_2_df[two_step_path] += 1.0
+        for three_step_path in relation_2_three_step_relation_path_counts[relation]:        #empty if max_steps < 3
             path_2_df[three_step_path] += 1.0
-
 
 
     # ======= 2) COMPUTE TF FOR EACH COUPLE <RELATION, PATH>
@@ -96,24 +116,27 @@ def compute(dataset):
         relation_2_path_tf[relation] = dict()
 
         # get the frequencies of 1-step, 2-step and 3-step relation paths with respect to the current relation
-        one_step_path_2_count_in_current_relation = relation_2_one_step_relation_path_counts[relation]
-        two_step_path_2_count_in_current_relation = relation_2_two_step_relation_path_counts[relation]
-        three_step_path_2_count_in_current_relation = relation_2_three_step_relation_path_counts[relation]
+        #one_step_path_2_count_in_current_relation = relation_2_one_step_relation_path_counts[relation]
+        #two_step_path_2_count_in_current_relation = relation_2_two_step_relation_path_counts[relation]  #empty if max_steps < 2
+        three_step_path_2_count_in_current_relation = relation_2_three_step_relation_path_counts[relation]  #empty if max_steps < 3
 
+        overall_path_count_in_cur_rel = 0
         # get the sum of frequencies of all paths
-        overall_path_count_in_cur_rel = float(sum(one_step_path_2_count_in_current_relation.values()) + \
-                                              sum(two_step_path_2_count_in_current_relation.values()) + \
-                                              sum(three_step_path_2_count_in_current_relation.values()))
+        #overall_path_count_in_cur_rel = float(sum(one_step_path_2_count_in_current_relation.values()))
+        #if max_steps >= 2:
+        #    overall_path_count_in_cur_rel += sum(two_step_path_2_count_in_current_relation.values())
+        if max_steps == 3:
+            overall_path_count_in_cur_rel += sum(three_step_path_2_count_in_current_relation.values())
 
         # for each 1-step path or 2-step path or 3-step path
         # compute the TF as  path frequency / sum of frequencies of all paths
-        for one_step_path in one_step_path_2_count_in_current_relation:
-            count = float(one_step_path_2_count_in_current_relation[one_step_path])
-            relation_2_path_tf[relation][one_step_path] = count/overall_path_count_in_cur_rel
-        for two_step_path in two_step_path_2_count_in_current_relation:
-            count = float(two_step_path_2_count_in_current_relation[two_step_path])
-            relation_2_path_tf[relation][two_step_path] = count/overall_path_count_in_cur_rel
-        for three_step_path in three_step_path_2_count_in_current_relation:
+        #for one_step_path in one_step_path_2_count_in_current_relation:
+        #    count = float(one_step_path_2_count_in_current_relation[one_step_path])
+        #    relation_2_path_tf[relation][one_step_path] = count/overall_path_count_in_cur_rel
+        #for two_step_path in two_step_path_2_count_in_current_relation:         # empty if max_steps < 2
+        #    count = float(two_step_path_2_count_in_current_relation[two_step_path])
+        #    relation_2_path_tf[relation][two_step_path] = count/overall_path_count_in_cur_rel
+        for three_step_path in three_step_path_2_count_in_current_relation:     # empty if max_steps < 3
             count = float(three_step_path_2_count_in_current_relation[three_step_path])
             relation_2_path_tf[relation][three_step_path] = count/overall_path_count_in_cur_rel
 
@@ -179,14 +202,14 @@ def compute(dataset):
 
         # get all the relation paths that connect the head and the tail of this test fact
         relation_paths_for_this_test_fact = set()
-        for (one_step_path_head, one_step_path_rel, one_step_path_tail) in test_fact_2_one_step_graph_paths[test_fact_key]:
-            relation_paths_for_this_test_fact.add(one_step_path_rel)
-        for ((two_step_path_head_1, two_step_path_rel_1, two_step_path_tail_1),
-             (two_step_path_head_2, two_step_path_rel_2, two_step_path_tail_2)) in test_fact_2_two_step_graph_paths[test_fact_key]:
-            relation_paths_for_this_test_fact.add(two_step_path_rel_1 + SEPARATOR + two_step_path_rel_2)
+        #for (one_step_path_head, one_step_path_rel, one_step_path_tail) in test_fact_2_one_step_graph_paths[test_fact_key]:
+        #    relation_paths_for_this_test_fact.add(one_step_path_rel)
+        #for ((two_step_path_head_1, two_step_path_rel_1, two_step_path_tail_1),
+        #     (two_step_path_head_2, two_step_path_rel_2, two_step_path_tail_2)) in test_fact_2_two_step_graph_paths[test_fact_key]: # empty if max_steps < 2
+        #    relation_paths_for_this_test_fact.add(two_step_path_rel_1 + SEPARATOR + two_step_path_rel_2)
         for ((three_step_path_head_1, three_step_path_rel_1, three_step_path_tail_1),
              (three_step_path_head_2, three_step_path_rel_2, three_step_path_tail_2),
-             (three_step_path_head_3, three_step_path_rel_3, three_step_path_tail_3)) in test_fact_2_three_step_graph_paths[test_fact_key]:
+             (three_step_path_head_3, three_step_path_rel_3, three_step_path_tail_3)) in test_fact_2_three_step_graph_paths[test_fact_key]: # empty if max_steps < 3
             relation_paths_for_this_test_fact.add(SEPARATOR.join([three_step_path_rel_1, three_step_path_rel_2, three_step_path_rel_3]))
 
 
@@ -229,9 +252,16 @@ def compute(dataset):
     return test_fact_2_support
 
 
-def save(dataset):
+def save(dataset, max_steps=3):
 
-    test_fact_2_support = compute(dataset)
+    if max_steps == 1:
+        filename = TEST_FACT_2_SUPPORT_MAX1_FILENAME
+    elif max_steps == 2:
+        filename = TEST_FACT_2_SUPPORT_MAX2_FILENAME
+    else:
+        filename = TEST_FACT_2_SUPPORT_MAX3_FILENAME
+
+    test_fact_2_support = compute(dataset, max_steps)
 
     lines = []
 
@@ -243,16 +273,22 @@ def save(dataset):
         key = SEPARATOR.join(test_triple)
         lines.append(key + SEPARATOR + str(test_fact_2_support[key]) + "\n")
 
-    output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACT_2_SUPPORT_FILENAME)
+    output_filepath = os.path.join(dataset.home, FOLDER, filename)
     print("Saving support for each test fact in dataset %s into location %s" % (dataset.name, output_filepath))
     with open(output_filepath, "w") as output_file:
         output_file.writelines(lines)
 
 
-def read(dataset):
+def read(dataset, max_steps=3):
     test_fact_2_support = dict()
 
-    input_filepath = os.path.join(dataset.home, FOLDER, TEST_FACT_2_SUPPORT_FILENAME)
+    if max_steps==1:
+        filename = TEST_FACT_2_SUPPORT_MAX1_FILENAME
+    elif max_steps==2:
+        filename = TEST_FACT_2_SUPPORT_MAX2_FILENAME
+    else:
+        filename = TEST_FACT_2_SUPPORT_MAX3_FILENAME
+    input_filepath = os.path.join(dataset.home, FOLDER, filename)
     print("Reading relation paths support for each test fact in dataset %s from location %s" % (dataset.name, input_filepath))
 
 
@@ -266,8 +302,8 @@ def read(dataset):
 
     return test_fact_2_support
 
-#save(datasets.Dataset(datasets.FB15K))
-#save(datasets.Dataset(datasets.FB15K_237))
-#save(datasets.Dataset(datasets.WN18))
-#save(datasets.Dataset(datasets.WN18RR))
-#save(datasets.Dataset(datasets.YAGO3_10))
+#save(datasets.Dataset(datasets.FB15K), 1)
+#save(datasets.Dataset(datasets.FB15K_237), 1)
+#save(datasets.Dataset(datasets.WN18), 3)
+#save(datasets.Dataset(datasets.WN18RR), 3)
+#save(datasets.Dataset(datasets.YAGO3_10), 1)

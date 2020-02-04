@@ -400,7 +400,7 @@ def _compute_3_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_fa
 
 
 
-def compute(dataset):
+def compute(dataset, max_steps=3):
     """
         For both training facts and test facts of a specific dataset,
         extract all training 1-step graph paths, training 2-step and training 3-step graph paths
@@ -409,7 +409,14 @@ def compute(dataset):
         Note: self-edges are considered acceptable in 1-step paths, but not in 2-step paths nor in 3-step paths.
 
         :param dataset: the dataset to compute the graph paths for
+        :param max_steps: the maximum number of steps per path to take into account.
+                           The highest value allowed for max_steps is currently 3
     """
+
+    if max_steps <= 0:
+        raise Exception("Invalid value for \"max_steps\": " + str(max_steps))
+    if max_steps > 3:
+        raise Exception("The maximum value supported for \"max_steps\" is 3")
 
     print("Computing graph paths for train and test facts in dataset %s" % dataset.name)
 
@@ -434,8 +441,10 @@ def compute(dataset):
         fact = (html.unescape(fact[0]), html.unescape(fact[1]), html.unescape(fact[2]))
 
         train_fact_to_one_step_paths[SEPARATOR.join(fact)] = _compute_1_step_paths_for(fact, entity_pair_2_train_facts)
-        train_fact_to_two_step_paths[SEPARATOR.join(fact)] = _compute_2_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
-        train_fact_to_three_step_paths[SEPARATOR.join(fact)] = _compute_3_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
+        if max_steps >= 2:
+            train_fact_to_two_step_paths[SEPARATOR.join(fact)] = _compute_2_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
+        if max_steps == 3:
+            train_fact_to_three_step_paths[SEPARATOR.join(fact)] = _compute_3_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
 
         if i % 1000 == 0:
             end = time.time()
@@ -453,8 +462,10 @@ def compute(dataset):
         fact = (html.unescape(fact[0]), html.unescape(fact[1]), html.unescape(fact[2]))
 
         test_fact_to_one_step_paths[SEPARATOR.join(fact)] = _compute_1_step_paths_for(fact, entity_pair_2_train_facts)
-        test_fact_to_two_step_paths[SEPARATOR.join(fact)] = _compute_2_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
-        test_fact_to_three_step_paths[SEPARATOR.join(fact)] = _compute_3_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
+        if max_steps >= 2:
+            test_fact_to_two_step_paths[SEPARATOR.join(fact)] = _compute_2_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
+        if max_steps == 3:
+            test_fact_to_three_step_paths[SEPARATOR.join(fact)] = _compute_3_step_paths_for(fact, entity_2_train_facts, entity_pair_2_train_facts)
 
         if i % 1000 == 0:
             end = time.time()
@@ -462,10 +473,17 @@ def compute(dataset):
             print("\t\t%i test facts processed so far; time = %f" % (i, interval))
             start = end
 
-    return train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths, \
-           test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths
+    if max_steps == 1:
+        return train_fact_to_one_step_paths, test_fact_to_one_step_paths
 
-def save(dataset):
+    elif max_steps == 2:
+        return train_fact_to_one_step_paths, train_fact_to_two_step_paths, \
+               test_fact_to_one_step_paths, test_fact_to_two_step_paths
+    else:
+        return train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths, \
+               test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths
+
+def save(dataset, max_steps=3):
     """
         Compute for both the training facts and the test facts of a datasetm
         the graph paths of length 1 or 2 that connect the head and tail entity of each fact
@@ -480,9 +498,23 @@ def save(dataset):
         (whitespaces added for greater clarity)
 
         :param dataset: the dataset to compute the mappings for
+        :param max_steps: the maximum number of steps per path to take into account.
+                           The highest value allowed for max_steps is currently 3
     """
-    train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths, \
-    test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths = compute(dataset)
+
+    if max_steps <= 0:
+        raise Exception("Invalid value for \"max_steps\": " + str(max_steps))
+    if max_steps > 3:
+        raise Exception("The maximum value supported for \"max_steps\" is 3")
+
+    if max_steps == 1:
+        train_fact_to_one_step_paths, test_fact_to_one_step_paths = compute(dataset, max_steps=max_steps)
+    elif max_steps == 2:
+        train_fact_to_one_step_paths, train_fact_to_two_step_paths, \
+        test_fact_to_one_step_paths, test_fact_to_two_step_paths = compute(dataset, max_steps=max_steps)
+    elif max_steps == 3:
+        train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths, \
+        test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths = compute(dataset, max_steps=max_steps)
 
     one_step_train_lines = []
     two_step_train_lines = []
@@ -501,18 +533,19 @@ def save(dataset):
         for path in train_fact_to_one_step_paths[train_fact_key]:
             one_step_paths.append(SEPARATOR.join(path))
         one_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(one_step_paths)
-
-        for path in train_fact_to_two_step_paths[train_fact_key]:
-            two_step_paths.append(SEPARATOR.join(path[0] + path[1]))
-        two_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(two_step_paths)
-
-        for path in train_fact_to_three_step_paths[train_fact_key]:
-            three_step_paths.append(SEPARATOR.join(path[0] + path[1] + path[2]))
-        three_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(three_step_paths)
-
         one_step_train_lines.append(train_fact_key + SEPARATOR + "[" + one_step_paths_str + "]" + "\n")
-        two_step_train_lines.append(train_fact_key + SEPARATOR + "[" + two_step_paths_str + "]" + "\n")
-        three_step_train_lines.append(train_fact_key + SEPARATOR + "[" + three_step_paths_str + "]" + "\n")
+
+        if max_steps >= 2:
+            for path in train_fact_to_two_step_paths[train_fact_key]:
+                two_step_paths.append(SEPARATOR.join(path[0] + path[1]))
+            two_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(two_step_paths)
+            two_step_train_lines.append(train_fact_key + SEPARATOR + "[" + two_step_paths_str + "]" + "\n")
+
+        if max_steps == 3:
+            for path in train_fact_to_three_step_paths[train_fact_key]:
+                three_step_paths.append(SEPARATOR.join(path[0] + path[1] + path[2]))
+            three_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(three_step_paths)
+            three_step_train_lines.append(train_fact_key + SEPARATOR + "[" + three_step_paths_str + "]" + "\n")
 
     one_step_test_lines = []
     two_step_test_lines = []
@@ -530,51 +563,59 @@ def save(dataset):
         for path in test_fact_to_one_step_paths[test_fact_key]:
             one_step_paths.append(SEPARATOR.join(path))
         one_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(one_step_paths)
-
-        for path in test_fact_to_two_step_paths[test_fact_key]:
-            two_step_paths.append(SEPARATOR.join(path[0] + path[1]))
-        two_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(two_step_paths)
-
-        for path in test_fact_to_three_step_paths[test_fact_key]:
-            three_step_paths.append(SEPARATOR.join(path[0] + path[1] + path[2]))
-        three_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(three_step_paths)
-
         one_step_test_lines.append(test_fact_key + SEPARATOR + "[" + one_step_paths_str + "]" + "\n")
-        two_step_test_lines.append(test_fact_key + SEPARATOR + "[" + two_step_paths_str + "]" + "\n")
-        three_step_test_lines.append(test_fact_key + SEPARATOR + "[" + three_step_paths_str + "]" + "\n")
+
+        if max_steps >= 2:
+            for path in test_fact_to_two_step_paths[test_fact_key]:
+                two_step_paths.append(SEPARATOR.join(path[0] + path[1]))
+            two_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(two_step_paths)
+            two_step_test_lines.append(test_fact_key + SEPARATOR + "[" + two_step_paths_str + "]" + "\n")
+
+        if max_steps == 3:
+            for path in test_fact_to_three_step_paths[test_fact_key]:
+                three_step_paths.append(SEPARATOR.join(path[0] + path[1] + path[2]))
+            three_step_paths_str = PATHS_IN_LIST_SEPARATOR.join(three_step_paths)
+            three_step_test_lines.append(test_fact_key + SEPARATOR + "[" + three_step_paths_str + "]" + "\n")
 
     output_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
     print("Saving one-step graph paths for train facts of dataset %s into location %s" % (dataset.name, output_filepath))
     with open(output_filepath, "w") as output_file:
         output_file.writelines(one_step_train_lines)
 
-    output_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving two-step graph paths for train facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with open(output_filepath, "w") as output_file:
-        output_file.writelines(two_step_train_lines)
-
-    output_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving three-step graph paths for train facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with gzip.open(output_filepath, "wt") as output_file:
-        output_file.writelines(three_step_train_lines)
-
     output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
     print("Saving one-step graph paths for test facts of dataset %s into location %s" % (dataset.name, output_filepath))
     with open(output_filepath, "w") as output_file:
         output_file.writelines(one_step_test_lines)
 
-    output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving two-step graph paths for test facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with open(output_filepath, "w") as output_file:
-        output_file.writelines(two_step_test_lines)
+    if max_steps >= 2:
 
-    output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
-    print("Saving three-step graph paths for test facts of dataset %s into location %s" % (dataset.name, output_filepath))
-    with open(output_filepath, "w") as output_file:
-        output_file.writelines(three_step_test_lines)
+        output_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+        print("Saving two-step graph paths for train facts of dataset %s into location %s" % (
+        dataset.name, output_filepath))
+        with open(output_filepath, "w") as output_file:
+            output_file.writelines(two_step_train_lines)
+
+        output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+        print("Saving two-step graph paths for test facts of dataset %s into location %s" % (
+        dataset.name, output_filepath))
+        with open(output_filepath, "w") as output_file:
+            output_file.writelines(two_step_test_lines)
+
+    if max_steps == 3:
+        output_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
+        print("Saving three-step graph paths for train facts of dataset %s into location %s" % (dataset.name, output_filepath))
+        with gzip.open(output_filepath, "wt") as output_file:
+            output_file.writelines(three_step_train_lines)
+
+        output_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
+        print("Saving three-step graph paths for test facts of dataset %s into location %s" % (dataset.name, output_filepath))
+        with gzip.open(output_filepath, "wt") as output_file:
+            output_file.writelines(three_step_test_lines)
 
 
-def _read_one_step_paths_from_file(input_filepath):
+def read_one_step_paths(dataset, filename):
+    input_filepath = os.path.join(dataset.home, FOLDER, filename)
+    print("Reading one-step graph paths for facts of dataset %s from location %s" % (dataset.name, input_filepath))
 
     fact_to_one_step_paths = defaultdict(lambda: [])
 
@@ -596,7 +637,10 @@ def _read_one_step_paths_from_file(input_filepath):
 
     return fact_to_one_step_paths
 
-def _read_two_step_paths_from_file(input_filepath):
+def read_two_step_paths(dataset, filename):
+    input_filepath = os.path.join(dataset.home, FOLDER, filename)
+    print("Reading two-step graph paths for facts of dataset %s from location %s" % (dataset.name, input_filepath))
+
     fact_to_two_step_paths = defaultdict(lambda: [])
 
     with open(input_filepath, "r") as input_file:
@@ -618,8 +662,10 @@ def _read_two_step_paths_from_file(input_filepath):
     return fact_to_two_step_paths
 
 
-def _read_three_step_paths_from_file(input_filepath):
-    print(input_filepath)
+def read_three_step_paths(dataset, filename):
+    input_filepath = os.path.join(dataset.home, FOLDER, filename)
+    print("Reading three-step graph paths for facts of dataset %s from location %s" % (dataset.name, input_filepath))
+
     fact_to_three_step_paths = defaultdict(lambda: [])
 
     if input_filepath.endswith(".gz"):
@@ -648,70 +694,50 @@ def _read_three_step_paths_from_file(input_filepath):
     return fact_to_three_step_paths
 
 
+def read_all(dataset, max_steps=3):
+    train_fact_to_one_step_paths = read_one_step_paths(dataset, TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
+    test_fact_to_one_step_paths = read_one_step_paths(dataset, TEST_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
+    if max_steps == 1:
+        return train_fact_to_one_step_paths, test_fact_to_one_step_paths
 
+    test_fact_to_two_step_paths = read_two_step_paths(dataset, TEST_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+    train_fact_to_two_step_paths = read_two_step_paths(dataset, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+    if max_steps == 2:
+        return train_fact_to_one_step_paths, train_fact_to_two_step_paths, test_fact_to_one_step_paths, test_fact_to_two_step_paths
 
-def read_all(dataset):
-    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading one-step graph paths for train facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    train_fact_to_one_step_paths = _read_one_step_paths_from_file(input_filepath)
-
-    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading two-step graph paths for train facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    train_fact_to_two_step_paths = _read_two_step_paths_from_file(input_filepath)
-
-    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading three-step graph paths for train facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    train_fact_to_three_step_paths = _read_three_step_paths_from_file(input_filepath)
-
-    input_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading one-step graph paths for test facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    test_fact_to_one_step_paths = _read_one_step_paths_from_file(input_filepath)
-
-    input_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading two-step graph paths for test facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    test_fact_to_two_step_paths = _read_two_step_paths_from_file(input_filepath)
-
-    input_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading three-step graph paths for test facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    test_fact_to_three_step_paths = _read_three_step_paths_from_file(input_filepath)
-
+    test_fact_to_three_step_paths = read_three_step_paths(dataset, TEST_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
+    train_fact_to_three_step_paths = read_three_step_paths(dataset, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
     return train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths, \
            test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths
 
-def read_train(dataset):
-    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading one-step graph paths for train facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    train_fact_to_one_step_paths = _read_one_step_paths_from_file(input_filepath)
+def read_train(dataset, max_steps=3):
 
-    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading two-step graph paths for train facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    train_fact_to_two_step_paths = _read_two_step_paths_from_file(input_filepath)
+    train_fact_to_one_step_paths = read_one_step_paths(dataset, TRAIN_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
+    if max_steps == 1:
+        return train_fact_to_one_step_paths
 
-    input_filepath = os.path.join(dataset.home, FOLDER, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading three-step graph paths for train facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    train_fact_to_three_step_paths = _read_three_step_paths_from_file(input_filepath)
+    train_fact_to_two_step_paths = read_two_step_paths(dataset, TRAIN_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+    if max_steps == 2:
+        return train_fact_to_one_step_paths, train_fact_to_two_step_paths
 
+    train_fact_to_three_step_paths = read_three_step_paths(dataset, TRAIN_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
     return train_fact_to_one_step_paths, train_fact_to_two_step_paths, train_fact_to_three_step_paths
 
 
-def read_test(dataset):
+def read_test(dataset, max_steps=3):
+    test_fact_to_one_step_paths = read_one_step_paths(dataset, TEST_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
+    if max_steps == 1:
+        return test_fact_to_one_step_paths
 
-    input_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_ONE_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading one-step graph paths for test facts of dataset %s from location %s" % (dataset.name, input_filepath))
-    test_fact_to_one_step_paths = _read_one_step_paths_from_file(input_filepath)
+    test_fact_to_two_step_paths = read_two_step_paths(dataset, TEST_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
+    if max_steps == 2:
+        return test_fact_to_one_step_paths, test_fact_to_two_step_paths
 
-    input_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_TWO_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading two-step graph paths for test facts of dataset %s from location %s" % (dataset.name, input_filepath))
-    test_fact_to_two_step_paths = _read_two_step_paths_from_file(input_filepath)
-
-    input_filepath = os.path.join(dataset.home, FOLDER, TEST_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
-    print("Reading three-step graph paths for test facts of dataset %s into location %s" % (dataset.name, input_filepath))
-    test_fact_to_three_step_paths = _read_three_step_paths_from_file(input_filepath)
-
+    test_fact_to_three_step_paths = read_three_step_paths(dataset, TEST_FACTS_WITH_THREE_STEP_GRAPH_PATHS_FILENAME)
     return test_fact_to_one_step_paths, test_fact_to_two_step_paths, test_fact_to_three_step_paths
 
 #save(datasets.Dataset(datasets.FB15K))
 #save(datasets.Dataset(datasets.FB15K_237))
-#save(datasets.Dataset(datasets.WN18))
-#save(datasets.Dataset(datasets.WN18RR))
+#save(datasets.Dataset(datasets.WN18), 3)
+#save(datasets.Dataset(datasets.WN18RR), 3)
 #save(datasets.Dataset(datasets.YAGO3_10))
