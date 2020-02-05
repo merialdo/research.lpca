@@ -59,7 +59,7 @@ For each model we used the best-performing implementation available.
     - [Implementation](https://github.com/nju-websoft/RSN)
 
 
-We also employ the rule-based model AnyBURL as a baseline.
+* We also employ the rule-based model AnyBURL as a baseline.
     - [Paper](http://web.informatik.uni-mannheim.de/AnyBURL/meilicke19anyburl.pdf)
     - [Implementation](http://web.informatik.uni-mannheim.de/AnyBURL/)
 
