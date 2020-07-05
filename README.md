@@ -95,10 +95,10 @@ In each of these folders, the scripts to run in order to replicate the results o
 We note that
 - In WN18RR, as reported by the authors of the dataset, a small percentage of test facts feature entities not included in the training set, so no meaningful predictions can be obtained for these facts. A few implementations (e.g. Ampligraph, ComplEx-N3) would actively skip such facts in their evaluation pipelines. Since the large majority of systems would keep them, we have all models include them in order to provide the fairest possible setting.
 - In YAGO3-10 we observe that a few entities appear in two different versions depending on HTML escaping policies or on capitalisation. In these cases, odels would handle each version as a separate, independent entity; to solve this issue we have performed deduplication manually. The duplicate entities we have identified are:
-    - Brighton_&_Hove_Albion_F.C. and Brighton_&amp;_Hove_Albion_F.C.
-    - College_of_William_&_Mary and College_of_William_&amp;_Mary
-    - Maldon_&_Tiptree_F.C. and Maldon_&amp;_Tiptree_F.C. 
-    - Alaska_Department_of_Transportation_&_Public_Facilities and Alaska_Department_of_Transportation_&amp;_Public_Facilities
+    - Brighton_&\_Hove_Albion_F.C. and Brighton_&amp;\_Hove_Albion_F.C.
+    - College_of_William_&\_Mary and College_of_William_&amp;\_Mary
+    - Maldon_&\_Tiptree_F.C. and Maldon_&amp;\_Tiptree_F.C. 
+    - Alaska_Department_of_Transportation_&\_Public_Facilities and Alaska_Department_of_Transportation_&amp;\_Public_Facilities
     - Turing_award and Turing_Award
      
 
